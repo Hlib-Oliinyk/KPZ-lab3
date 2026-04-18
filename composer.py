@@ -2,9 +2,23 @@ from abc import ABC, abstractmethod
 from collections import deque
 
 
+class NodeVisitor(ABC):
+    @abstractmethod
+    def visit_element(self, element: "LightElementNode") -> None:
+        pass
+
+    @abstractmethod
+    def visit_text(self, node: "LightTextNode") -> None:
+        pass
+
+
 class LightNode(ABC):
     @abstractmethod
     def outer_html(self, indent: int = 0) -> str:
+        pass
+
+    @abstractmethod
+    def accept(self, visitor: NodeVisitor) -> None:
         pass
 
 
@@ -14,6 +28,9 @@ class LightTextNode(LightNode):
 
     def outer_html(self, indent: int = 0) -> str:
         return "  " * indent + self.text
+
+    def accept(self, visitor: NodeVisitor) -> None:
+        visitor.visit_text(self)
 
 
 class RenderState(ABC):
@@ -142,6 +159,11 @@ class LightElementNode(LightNode):
         self.on_rendered(html)
         return html
 
+    def accept(self, visitor: NodeVisitor) -> None:
+        visitor.visit_element(self)
+        for child in self.children:
+            child.accept(visitor)
+
     def dfs_iterator(self) -> "DFSIterator":
         return DFSIterator(self)
 
@@ -234,6 +256,43 @@ class CommandHistory:
     def undo(self) -> None:
         if self._history:
             self._history.pop().undo()
+
+
+class TagCounterVisitor(NodeVisitor):
+    def __init__(self):
+        self.counts: dict[str, int] = {}
+
+    def visit_element(self, element: LightElementNode) -> None:
+        self.counts[element.tag] = self.counts.get(element.tag, 0) + 1
+
+    def visit_text(self, node: LightTextNode) -> None:
+        pass
+
+
+class ClassCollectorVisitor(NodeVisitor):
+    def __init__(self):
+        self.classes: set[str] = set()
+
+    def visit_element(self, element: LightElementNode) -> None:
+        for cls in element.classes:
+            self.classes.add(cls)
+
+    def visit_text(self, node: LightTextNode) -> None:
+        pass
+
+
+class PlainTextVisitor(NodeVisitor):
+    def __init__(self):
+        self._parts: list[str] = []
+
+    def visit_element(self, element: LightElementNode) -> None:
+        pass
+
+    def visit_text(self, node: LightTextNode) -> None:
+        self._parts.append(node.text.strip())
+
+    def get_text(self) -> str:
+        return " ".join(p for p in self._parts if p)
 
 
 class LoggedElement(LightElementNode):
@@ -386,6 +445,36 @@ def main():
     print(logged_div.outer_html())
     print()
     logged_div.remove(logged_p)
+
+    print()
+
+    page = LightElementNode("main", classes=["container", "main"])
+    header = LightElementNode("header", classes=["header"]).add(LightTextNode("Заголовок"))
+    nav = LightElementNode("nav", classes=["nav", "menu"])
+    nav.add(LightElementNode("a", classes=["link"]).add(LightTextNode("Посилання 1")))
+    nav.add(LightElementNode("a", classes=["link"]).add(LightTextNode("Посилання 2")))
+    content = LightElementNode("section", classes=["content"])
+    content.add(LightElementNode("p").add(LightTextNode("Абзац перший")))
+    content.add(LightElementNode("p").add(LightTextNode("Абзац другий")))
+    page.add(header)
+    page.add(nav)
+    page.add(content)
+
+    print("Відвідувач: підрахунок тегів:")
+    counter = TagCounterVisitor()
+    page.accept(counter)
+    for tag, count in sorted(counter.counts.items()):
+        print(f"<{tag}>: {count}")
+
+    print("\nВідвідувач: збір класів:")
+    collector = ClassCollectorVisitor()
+    page.accept(collector)
+    print(f"{sorted(collector.classes)}")
+
+    print("\nВідвідувач: весь текст сторінки:")
+    extractor = PlainTextVisitor()
+    page.accept(extractor)
+    print(f"{extractor.get_text()}")
 
 
 if __name__ == "__main__":
