@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections import deque
 
 
 class LightNode(ABC):
@@ -52,6 +53,52 @@ class LightElementNode(LightNode):
         inner = self.inner_html(indent + 1)
         return f"{pad}<{self.tag}{attrs}>\n{inner}\n{pad}</{self.tag}>"
 
+    def dfs_iterator(self) -> "DFSIterator":
+        return DFSIterator(self)
+
+    def bfs_iterator(self) -> "BFSIterator":
+        return BFSIterator(self)
+
+
+class NodeIterator(ABC):
+    @abstractmethod
+    def has_next(self) -> bool:
+        pass
+
+    @abstractmethod
+    def next(self) -> LightNode:
+        pass
+
+
+class DFSIterator(NodeIterator):
+    def __init__(self, root: LightElementNode):
+        self._stack: list[LightNode] = [root]
+
+    def has_next(self) -> bool:
+        return len(self._stack) > 0
+
+    def next(self) -> LightNode:
+        node = self._stack.pop()
+        if isinstance(node, LightElementNode):
+            for child in reversed(node.children):
+                self._stack.append(child)
+        return node
+
+
+class BFSIterator(NodeIterator):
+    def __init__(self, root: LightElementNode):
+        self._queue: deque[LightNode] = deque([root])
+
+    def has_next(self) -> bool:
+        return len(self._queue) > 0
+
+    def next(self) -> LightNode:
+        node = self._queue.popleft()
+        if isinstance(node, LightElementNode):
+            for child in node.children:
+                self._queue.append(child)
+        return node
+
 
 def main():
     ul = LightElementNode("ul", classes=["menu"])
@@ -89,6 +136,35 @@ def main():
                            closing=LightElementNode.SELF_CLOSING, classes=["avatar"])
     print("Self-closing тег")
     print(img.outer_html())
+    print()
+
+    div = LightElementNode("div")
+    section = LightElementNode("section")
+    p1 = LightElementNode("p").add(LightTextNode("Перший параграф"))
+    p2 = LightElementNode("p").add(LightTextNode("Другий параграф"))
+    span = LightElementNode("span").add(LightTextNode("Всередині секції"))
+    section.add(span)
+    div.add(p1)
+    div.add(p2)
+    div.add(section)
+
+    print("DFS обхід:")
+    dfs = div.dfs_iterator()
+    while dfs.has_next():
+        node = dfs.next()
+        if isinstance(node, LightElementNode):
+            print(f"  <{node.tag}>")
+        else:
+            print(f"  текст: {node.text}")
+
+    print("\nBFS обхід:")
+    bfs = div.bfs_iterator()
+    while bfs.has_next():
+        node = bfs.next()
+        if isinstance(node, LightElementNode):
+            print(f"  <{node.tag}>")
+        else:
+            print(f"  текст: {node.text}")
 
 
 if __name__ == "__main__":
