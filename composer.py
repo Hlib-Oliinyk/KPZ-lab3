@@ -16,6 +16,48 @@ class LightTextNode(LightNode):
         return "  " * indent + self.text
 
 
+class RenderState(ABC):
+    @abstractmethod
+    def render(self, element: "LightElementNode", indent: int) -> str:
+        pass
+
+
+class NormalState(RenderState):
+    def render(self, element: "LightElementNode", indent: int) -> str:
+        pad = "  " * indent
+        attrs = element._attrs()
+
+        if element.closing == LightElementNode.SELF_CLOSING:
+            return f"{pad}<{element.tag}{attrs} />"
+
+        inner = element.inner_html(indent + 1)
+        return f"{pad}<{element.tag}{attrs}>\n{inner}\n{pad}</{element.tag}>"
+
+
+class HiddenState(RenderState):
+    def render(self, element: "LightElementNode", indent: int) -> str:
+        pad = "  " * indent
+        attrs = element._attrs()
+
+        if element.closing == LightElementNode.SELF_CLOSING:
+            return f'{pad}<{element.tag}{attrs} style="display:none" />'
+
+        inner = element.inner_html(indent + 1)
+        return f'{pad}<{element.tag}{attrs} style="display:none">\n{inner}\n{pad}</{element.tag}>'
+
+
+class DisabledState(RenderState):
+    def render(self, element: "LightElementNode", indent: int) -> str:
+        pad = "  " * indent
+        attrs = element._attrs()
+
+        if element.closing == LightElementNode.SELF_CLOSING:
+            return f"{pad}<{element.tag}{attrs} disabled />"
+
+        inner = element.inner_html(indent + 1)
+        return f"{pad}<{element.tag}{attrs} disabled>\n{inner}\n{pad}</{element.tag}>"
+
+
 class LightElementNode(LightNode):
     BLOCK  = "block"
     INLINE = "inline"
@@ -28,6 +70,10 @@ class LightElementNode(LightNode):
         self.closing = closing
         self.classes = classes or []
         self.children: list[LightNode] = []
+        self._state: RenderState = NormalState()
+
+    def set_state(self, state: RenderState) -> None:
+        self._state = state
 
     def add(self, node: LightNode) -> "LightElementNode":
         self.children.append(node)
@@ -44,14 +90,7 @@ class LightElementNode(LightNode):
         return "\n".join(child.outer_html(indent) for child in self.children)
 
     def outer_html(self, indent: int = 0) -> str:
-        pad = "  " * indent
-        attrs = self._attrs()
-
-        if self.closing == self.SELF_CLOSING:
-            return f"{pad}<{self.tag}{attrs} />"
-
-        inner = self.inner_html(indent + 1)
-        return f"{pad}<{self.tag}{attrs}>\n{inner}\n{pad}</{self.tag}>"
+        return self._state.render(self, indent)
 
     def dfs_iterator(self) -> "DFSIterator":
         return DFSIterator(self)
@@ -239,6 +278,25 @@ def main():
     print("\nПісля undo (скасовано AddChild):")
     print(article.outer_html())
     print(f"класи: {article.classes}")
+
+    print()
+
+    button = LightElementNode("button", classes=["btn"]).add(LightTextNode("Натисни"))
+
+    print("Стейт NormalState:")
+    print(button.outer_html())
+
+    button.set_state(HiddenState())
+    print("\nСтейт HiddenState:")
+    print(button.outer_html())
+
+    button.set_state(DisabledState())
+    print("\nСтейт DisabledState:")
+    print(button.outer_html())
+
+    button.set_state(NormalState())
+    print("\nСтейт повернуто до NormalState:")
+    print(button.outer_html())
 
 
 if __name__ == "__main__":
