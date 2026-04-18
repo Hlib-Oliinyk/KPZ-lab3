@@ -71,26 +71,76 @@ class LightElementNode(LightNode):
         self.classes = classes or []
         self.children: list[LightNode] = []
         self._state: RenderState = NormalState()
+        self._styles: dict[str, str] = {}
+        self.on_created()
+
+    def on_created(self) -> None:
+        pass
+
+    def on_inserted(self, parent: "LightElementNode") -> None:
+        pass
+
+    def on_removed(self, parent: "LightElementNode") -> None:
+        pass
+
+    def on_styles_applied(self, styles: dict[str, str]) -> None:
+        pass
+
+    def on_class_list_applied(self, classes: list[str]) -> None:
+        pass
+
+    def on_text_rendered(self, text: str) -> None:
+        pass
+
+    def on_child_added(self, child: LightNode) -> None:
+        pass
+
+    def on_rendered(self, html: str) -> None:
+        pass
 
     def set_state(self, state: RenderState) -> None:
         self._state = state
 
+    def set_styles(self, styles: dict[str, str]) -> "LightElementNode":
+        self._styles = styles
+        self.on_styles_applied(styles)
+        return self
+
     def add(self, node: LightNode) -> "LightElementNode":
         self.children.append(node)
+        self.on_child_added(node)
+        if isinstance(node, LightElementNode):
+            node.on_inserted(self)
+        return self
+
+    def remove(self, node: LightNode) -> "LightElementNode":
+        self.children.remove(node)
+        if isinstance(node, LightElementNode):
+            node.on_removed(self)
         return self
 
     def child_count(self) -> int:
         return len(self.children)
 
     def _attrs(self) -> str:
+        style_str = f' style="{";".join(f"{k}:{v}" for k, v in self._styles.items())}"'  if self._styles else ""
+        if self.classes:
+            self.on_class_list_applied(self.classes)
         cls = f' class="{" ".join(self.classes)}"' if self.classes else ""
-        return cls
+        return cls + style_str
 
     def inner_html(self, indent: int = 0) -> str:
-        return "\n".join(child.outer_html(indent) for child in self.children)
+        parts = []
+        for child in self.children:
+            if isinstance(child, LightTextNode):
+                self.on_text_rendered(child.text)
+            parts.append(child.outer_html(indent))
+        return "\n".join(parts)
 
     def outer_html(self, indent: int = 0) -> str:
-        return self._state.render(self, indent)
+        html = self._state.render(self, indent)
+        self.on_rendered(html)
+        return html
 
     def dfs_iterator(self) -> "DFSIterator":
         return DFSIterator(self)
@@ -184,6 +234,34 @@ class CommandHistory:
     def undo(self) -> None:
         if self._history:
             self._history.pop().undo()
+
+
+class LoggedElement(LightElementNode):
+    def on_created(self) -> None:
+        print(f"on_created: <{self.tag}>")
+
+    def on_inserted(self, parent: LightElementNode) -> None:
+        print(f"on_inserted: <{self.tag}> -> <{parent.tag}>")
+
+    def on_removed(self, parent: LightElementNode) -> None:
+        print(f"on_removed: <{self.tag}> з <{parent.tag}>")
+
+    def on_styles_applied(self, styles: dict[str, str]) -> None:
+        print(f"on_styles_applied до <{self.tag}>: {styles}")
+
+    def on_class_list_applied(self, classes: list[str]) -> None:
+        print(f"on_class_list_applied до <{self.tag}>: {classes}")
+
+    def on_text_rendered(self, text: str) -> None:
+        print(f"on_text_rendered у <{self.tag}>: {repr(text)}")
+
+    def on_child_added(self, child: LightNode) -> None:
+        label = child.tag if isinstance(child, LightElementNode) else repr(child.text)
+        print(f"on_child_added до <{self.tag}>: {label}")
+
+    def on_rendered(self, html: str) -> None:
+        lines = len(html.splitlines())
+        print(f"on_rendered: <{self.tag}> ({lines} рядків)")
 
 
 def main():
@@ -297,6 +375,17 @@ def main():
     button.set_state(NormalState())
     print("\nСтейт повернуто до NormalState:")
     print(button.outer_html())
+
+
+    print()
+    print("Шаблонний метод: хуки життєвого циклу:")
+    logged_div = LoggedElement("div")
+    logged_p = LoggedElement("p").add(LightTextNode("Текст параграфу"))
+    logged_div.add(logged_p)
+    logged_div.set_styles({"color": "red", "font-size": "16px"})
+    print(logged_div.outer_html())
+    print()
+    logged_div.remove(logged_p)
 
 
 if __name__ == "__main__":
