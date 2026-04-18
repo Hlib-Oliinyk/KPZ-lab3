@@ -100,6 +100,53 @@ class BFSIterator(NodeIterator):
         return node
 
 
+class Command(ABC):
+    @abstractmethod
+    def execute(self) -> None:
+        pass
+
+    @abstractmethod
+    def undo(self) -> None:
+        pass
+
+
+class AddChildCommand(Command):
+    def __init__(self, parent: LightElementNode, child: LightNode):
+        self._parent = parent
+        self._child = child
+
+    def execute(self) -> None:
+        self._parent.children.append(self._child)
+
+    def undo(self) -> None:
+        self._parent.children.remove(self._child)
+
+
+class AddClassCommand(Command):
+    def __init__(self, element: LightElementNode, cls: str):
+        self._element = element
+        self._cls = cls
+
+    def execute(self) -> None:
+        self._element.classes.append(self._cls)
+
+    def undo(self) -> None:
+        self._element.classes.remove(self._cls)
+
+
+class CommandHistory:
+    def __init__(self):
+        self._history: list[Command] = []
+
+    def execute(self, command: Command) -> None:
+        command.execute()
+        self._history.append(command)
+
+    def undo(self) -> None:
+        if self._history:
+            self._history.pop().undo()
+
+
 def main():
     ul = LightElementNode("ul", classes=["menu"])
     ul.add(LightElementNode("li").add(LightTextNode("Головна")))
@@ -165,6 +212,33 @@ def main():
             print(f"  <{node.tag}>")
         else:
             print(f"  текст: {node.text}")
+
+    print()
+
+    history = CommandHistory()
+    article = LightElementNode("article")
+    new_child = LightElementNode("p").add(LightTextNode("Новий параграф"))
+
+    print("Команди: стан до виконання:")
+    print(article.outer_html())
+    print(f"класи: {article.classes}")
+
+    history.execute(AddChildCommand(article, new_child))
+    history.execute(AddClassCommand(article, "featured"))
+
+    print("\nПісля execute (додано дочірній елемент і клас):")
+    print(article.outer_html())
+    print(f"класи: {article.classes}")
+
+    history.undo()
+    print("\nПісля undo (скасовано AddClass):")
+    print(article.outer_html())
+    print(f"класи: {article.classes}")
+
+    history.undo()
+    print("\nПісля undo (скасовано AddChild):")
+    print(article.outer_html())
+    print(f"класи: {article.classes}")
 
 
 if __name__ == "__main__":
